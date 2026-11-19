@@ -14,8 +14,6 @@ The first case study covers `pricing-service`, a Kotlin / Java 21 / Spring Boot 
 - Achieved a highest measured average throughput of **4,305.94 RPS** at a target of 5,000 RPS, with 0% HTTP errors but 13.84% dropped iterations. This is not a passing capacity result.
 - Identified load-generator VU exhaustion, high shared CPU utilization, GC pressure and intermittent database connection-pool contention as priorities for controlled optimization.
 
-![Grafana dashboard: HTTP throughput, per-pod RPS, latency percentiles and CPU under a 5,000 RPS target](docs/screenshots/pricing-rw-009/01-http-and-cpu.png)
-
 ## Repository responsibilities
 
 | Repository | Responsibility |
@@ -77,104 +75,113 @@ The dashboard uses **Test ID** and **Target RPS** variables. k6 series are separ
 
 ## Grafana dashboard reference (34 panels)
 
-The dashboard combines client-side load metrics and server-side telemetry to investigate where performance degrades. All screenshots below are actual measurements from the 5,000 RPS target run (`pricing-rw-009`, November 19, 2026), unless otherwise noted.
+The dashboard is organized into eight diagnostic groups. All grouped screenshots are cropped and recomposed from the original RW-009 run (5,000 target RPS, November 19, 2026); the plotted data is unchanged.
 
-### 1. HTTP performance and infrastructure overview
+### 1. HTTP (3 panels)
+
+Server-side throughput, load distribution and response latency.
 
 | Panel | What it shows / why it matters |
 | --- | --- |
 | HTTP - Total RPS | Aggregate server-side request rate; detects throughput plateaus and degradation. |
 | HTTP - RPS by Pod | Request rate per replica; helps detect uneven load distribution. |
 | HTTP - Latency Percentiles | Server p50, p95 and p99; reveals typical and tail latency. |
+
+![HTTP monitoring panels](docs/screenshots/pricing-rw-009/01-http.png)
+
+### 2. Infrastructure (2 panels)
+
+Shared compute consumption and resource competition across the test environment.
+
+| Panel | What it shows / why it matters |
+| --- | --- |
 | Infrastructure - CPU Usage | CPU cores used by pricing-service, PostgreSQL and k6; identifies resource competition. |
+| Infrastructure - Total CPU Usage | CPU utilization reported by Node Exporter; indicates shared infrastructure pressure in the local kind environment. |
 
-The overview screenshot at the top shows these four panels.
+![Infrastructure monitoring panels](docs/screenshots/pricing-rw-009/02-infrastructure.png)
 
-### 2. Kubernetes resources and connection pool
+### 3. Kubernetes (2 panels)
+
+Per-pod CPU and memory consumption for resource sizing and scaling.
 
 | Panel | What it shows / why it matters |
 | --- | --- |
 | Kubernetes - CPU Usage by Pod | CPU consumption per pod, with resource requests where configured; supports resource sizing. |
 | Kubernetes - Memory Usage by Pod | Container memory usage against requests and limits; reveals memory pressure and sizing opportunities. |
+
+![Kubernetes monitoring panels](docs/screenshots/pricing-rw-009/03-kubernetes.png)
+
+### 4. HikariCP (4 panels)
+
+Database connection-pool capacity, acquisition latency and waiting threads.
+
+| Panel | What it shows / why it matters |
+| --- | --- |
 | HikariCP - Connections | Active, idle and pool capacity metrics per replica; identifies pool saturation. |
 | HikariCP - Pending Threads | Threads waiting for a database connection; exposes connection acquisition queues. |
-
-![Per-pod resources and HikariCP connections](docs/screenshots/pricing-rw-009/02-pod-resources-and-hikari.png)
-
-### 3. Connection acquisition and Tomcat threads
-
-| Panel | What it shows / why it matters |
-| --- | --- |
 | HikariCP - Average Acquire Time | Average time to obtain a connection; identifies pool contention or connection creation delays. |
 | HikariCP - Connection Timeouts | Connection acquisition timeouts; detects failed attempts to obtain a connection. |
-| Tomcat - Threads | Busy, current and maximum worker threads; reveals thread-pool pressure. |
-| Tomcat - Thread Pool Utilization | Busy threads relative to configured maximum; checks whether the worker pool approaches capacity. |
 
-![HikariCP acquisition and Tomcat thread metrics](docs/screenshots/pricing-rw-009/03-hikari-and-tomcat.png)
+![HikariCP monitoring panels](docs/screenshots/pricing-rw-009/04-hikaricp.png)
 
-### 4. Tomcat connections and JVM memory
+### 5. Tomcat (3 panels)
+
+Embedded HTTP server worker threads and TCP connection capacity.
 
 | Panel | What it shows / why it matters |
 | --- | --- |
+| Tomcat - Threads | Busy, current and maximum worker threads; reveals thread-pool pressure. |
+| Tomcat - Thread Pool Utilization | Busy threads relative to configured maximum; checks whether the worker pool approaches capacity. |
 | Tomcat - TCP Connections | Current, keep-alive and maximum connections; checks connection capacity. |
+
+![Tomcat monitoring panels](docs/screenshots/pricing-rw-009/05-tomcat.png)
+
+### 6. JVM (6 panels)
+
+JVM memory, thread activity, garbage collection and allocation pressure.
+
+| Panel | What it shows / why it matters |
+| --- | --- |
 | JVM - Heap Usage | Used, committed and maximum heap metrics; supports JVM memory tuning. |
 | JVM - Metaspace Usage | Memory used for class metadata; helps identify abnormal growth. |
 | JVM - Live Threads | Live and daemon threads; tracks thread growth under load. |
-
-![Tomcat connections and JVM memory and threads](docs/screenshots/pricing-rw-009/04-tomcat-and-jvm.png)
-
-### 5. Garbage collection and database capacity
-
-| Panel | What it shows / why it matters |
-| --- | --- |
 | JVM - GC Pause Time | Accumulated GC pause duration per second (ms/s), not individual pause latency; indicates pause overhead. |
 | JVM - GC Frequency | GC events per minute, separated by action where available; reveals collection frequency. |
 | JVM - Memory Allocation Rate | Rate of JVM object allocation (MiB/s); highlights allocation pressure. |
-| PostgreSQL - Database Connections | Connections to the pricing database compared with the server-wide connection limit; supports connection budgeting. |
 
-![GC activity, allocation rate and PostgreSQL connection capacity](docs/screenshots/pricing-rw-009/05-gc-and-db-connections.png)
+![JVM monitoring panels](docs/screenshots/pricing-rw-009/06-jvm.png)
 
-### 6. PostgreSQL activity
+### 7. PostgreSQL (7 panels)
+
+Database capacity, transaction activity, cache efficiency and locking indicators.
 
 | Panel | What it shows / why it matters |
 | --- | --- |
+| PostgreSQL - Database Connections | Connections to the pricing database compared with the server-wide connection limit; supports connection budgeting. |
 | PostgreSQL - Connections by State | Active, idle, idle-in-transaction and other connection states; highlights open transactions and connection usage. |
 | PostgreSQL - Transactions per Second | Commit, rollback and combined transaction rates; correlates database activity with HTTP throughput. |
 | PostgreSQL - Cache Hit Ratio | Shared-buffer hit ratio; helps assess buffer-cache effectiveness. |
 | PostgreSQL - Locks | Lock counts grouped by lock mode; identifies locking activity, not necessarily blocked sessions. |
-
-![PostgreSQL connection states, transaction throughput, cache and locks](docs/screenshots/pricing-rw-009/06-postgresql.png)
-
-### 7. Database indicators and k6 throughput
-
-| Panel | What it shows / why it matters |
-| --- | --- |
 | PostgreSQL - Deadlocks | Reported deadlocks; detects transaction conflicts that result in deadlocks. |
 | PostgreSQL - Temporary Files | Temporary data volume; helps identify workloads that spill to temporary files. |
-| k6 - Target vs Actual RPS | Configured target versus measured client request rate; quantifies delivery shortfalls. |
-| k6 - Client Latency | Client-side average, p50, p95 and p99 HTTP request duration; measures latency observed by k6. |
 
-![Database deadlocks and temporary data, k6 throughput and latency](docs/screenshots/pricing-rw-009/07-database-and-k6.png)
+![PostgreSQL monitoring panels](docs/screenshots/pricing-rw-009/07-postgresql.png)
 
-### 8. Client/server comparison and load generator health
+### 8. k6 (7 panels)
+
+Client-observed performance, load delivery, generator capacity and request distribution.
 
 | Panel | What it shows / why it matters |
 | --- | --- |
+| k6 - Target vs Actual RPS | Configured target versus measured client request rate; quantifies delivery shortfalls. |
+| k6 - Client Latency | Client-side average, p50, p95 and p99 HTTP request duration; measures latency observed by k6. |
 | k6 - Client vs Server p95 | Compares client request duration with Spring server latency; helps localize delays without treating the difference as pure network latency. |
 | k6 - Virtual Users | Current and allocated maximum VUs reported by k6; reveals generator capacity pressure. |
 | k6 - Dropped Iterations | Iterations not started per second; detects inability to maintain the scheduled arrival rate. |
 | k6 - HTTP Error Rate | Proportion of failed HTTP requests; tracks reliability independently of dropped iterations. |
-
-![k6 client/server p95, VUs, dropped iterations and HTTP errors](docs/screenshots/pricing-rw-009/08-k6-latency-and-errors.png)
-
-### 9. Load distribution and system CPU
-
-| Panel | What it shows / why it matters |
-| --- | --- |
 | k6 - Requests by Pod | Client-observed requests per replica using the `X-Pod-Name` response header; independently verifies load distribution. |
-| Infrastructure - Total CPU Usage | CPU utilization reported by Node Exporter; indicates shared infrastructure pressure in the local kind environment. |
 
-![Client-observed traffic distribution and infrastructure CPU](docs/screenshots/pricing-rw-009/09-load-distribution-and-system-cpu.png)
+![k6 monitoring panels](docs/screenshots/pricing-rw-009/08-k6.png)
 
 ## Baseline results
 
