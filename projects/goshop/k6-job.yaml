@@ -1,0 +1,81 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-pricing
+  namespace: goshop
+
+spec:
+  backoffLimit: 0
+
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+
+          args:
+            - run
+            - -o
+            - experimental-prometheus-rw
+            - --tag
+            - testid=$(TEST_ID)
+            - /scripts/pricing-kubernetes.js
+
+          env:
+            - name: BASE_URL
+              value: "http://pricing-service:8080"
+
+            - name: API_PATH
+              value: "/api/exchange-rates"
+
+            - name: RATE
+              value: "10000"
+
+            - name: DURATION
+              value: "60s"
+
+            - name: NO_REUSE
+              value: "false"
+
+            - name: POD_NAMES
+              value: "pricing-service-77c767fccf-ccm9w,pricing-service-77c767fccf-m9gmh,pricing-service-77c767fccf-qnh9k"
+
+            - name: PRE_ALLOCATED_VUS
+              value: "50"
+
+            - name: MAX_VUS
+              value: "200"
+
+            - name: TEST_ID
+              value: "pricing-rw-010"
+
+            - name: K6_PROMETHEUS_RW_SERVER_URL
+              value: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/write"
+
+            - name: K6_PROMETHEUS_RW_PUSH_INTERVAL
+              value: "5s"
+
+            - name: K6_PROMETHEUS_RW_TREND_STATS
+              value: "avg,med,p(90),p(95),p(99),max"
+
+            - name: K6_PROMETHEUS_RW_STALE_MARKERS
+              value: "true"
+
+            - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+              value: "false"
+
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "128Mi"
+
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-pricing-script
